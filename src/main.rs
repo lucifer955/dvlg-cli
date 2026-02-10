@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use walkdir::WalkDir;
 
 #[derive(Parser, Debug)]
 #[command(name = "dvlg", version, about = "A Git-backed developer diary CLI")]
@@ -152,6 +153,21 @@ fn save_entries(path: &PathBuf, entries: &[LogEntry]) -> Result<(), String> {
         .map_err(|err| format!("Failed to write log file {}: {err}", path.display()))
 }
 
+fn format_date_from_path(path: &std::path::Path) -> Option<String> {
+    let file_stem = path.file_stem()?.to_string_lossy();
+    let day = file_stem.parse::<u32>().ok()?;
+    let month = path.parent()?.file_name()?.to_string_lossy().parse::<u32>().ok()?;
+    let year = path
+        .parent()?
+        .parent()?
+        .file_name()?
+        .to_string_lossy()
+        .parse::<i32>()
+        .ok()?;
+
+    Some(format!("{:04}-{:02}-{:02}", year, month, day))
+}
+
 fn main() {
     let config = load_config();
     let cli = Cli::parse();
@@ -281,7 +297,33 @@ fn main() {
                 current = current + Duration::days(1);
             }
         }
-        | Commands::Search { .. }
+        Commands::Search { term } => {
+            let needle = term.to_lowercase();
+            for entry in WalkDir::new(".dvlg")
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.file_type().is_file())
+                .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("yaml"))
+            {
+                let path = entry.path().to_path_buf();
+                let entries = match load_entries(&path) {
+                    Ok(entries) => entries,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let date = format_date_from_path(&path).unwrap_or_else(|| path.display().to_string());
+                for item in entries {
+                    let message = item.message.to_lowercase();
+                    let tags = item.tags.join(" ").to_lowercase();
+                    if message.contains(&needle) || tags.contains(&needle) {
+                        println!("{} - {}", date, item.message);
+                    }
+                }
+            }
+        }
         | Commands::Export { .. }
         | Commands::Decisions => {
             println!("Not implemented yet.");
