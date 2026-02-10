@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use chrono::Datelike;
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
@@ -70,5 +71,31 @@ fn load_config() -> Config {
 
 fn main() {
     let _config = load_config();
-    let _cli = Cli::parse();
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Init => {
+            let year = chrono::Local::now().year();
+            let path = PathBuf::from(".dvlg").join(year.to_string());
+            if path.exists() {
+                println!("dvlg already initialized at {}", path.display());
+                return;
+            }
+
+            if let Err(err) = fs::create_dir_all(&path) {
+                eprintln!("Failed to initialize dvlg: {err}");
+                std::process::exit(1);
+            }
+
+            println!("Initialized dvlg at {}", path.display());
+        }
+        Commands::Add { .. }
+        | Commands::Today
+        | Commands::List { .. }
+        | Commands::Search { .. }
+        | Commands::Export { .. }
+        | Commands::Decisions => {
+            println!("Not implemented yet.");
+        }
+    }
 }
