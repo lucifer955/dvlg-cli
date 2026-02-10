@@ -217,8 +217,32 @@ fn main() {
                 }
             }
         }
-        Commands::Today
-        | Commands::List { .. }
+        Commands::Today => {
+            let path = today_log_path();
+            if !path.exists() {
+                println!("No entries for today.");
+                return;
+            }
+
+            let entries = match load_entries(&path) {
+                Ok(entries) => entries,
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            };
+
+            let now = chrono::Local::now();
+            println!("{:04}-{:02}-{:02}", now.year(), now.month(), now.day());
+            for entry in entries {
+                if entry.decision {
+                    println!("- [decision] {}", entry.message);
+                } else {
+                    println!("- {}", entry.message);
+                }
+            }
+        }
+        Commands::List { .. }
         | Commands::Search { .. }
         | Commands::Export { .. }
         | Commands::Decisions => {
