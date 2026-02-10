@@ -1,9 +1,0 @@
-- timestamp: 2026-02-10T20:55:19+05:30
-  message: First entry
-  tags:
-  - setup
-  decision: false
-  git:
-    repo: /home/xavier511/Desktop/DevBlog
-    branch: develop
-    commit: 51fb248ac647ac1dc9cc3db46673b57de6e98dab

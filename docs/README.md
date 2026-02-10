@@ -120,6 +120,14 @@ dvlg list --month
 dvlg search "service bus"
 ```
 
+### Push log repo
+
+If you configured `log_repo_path`, push its commits:
+
+```bash
+dvlg push
+```
+
 ---
 
 ## Git Integration
@@ -218,9 +226,10 @@ auto_commit: true
 default_project: order-platform
 editor: vim
 log_repo_path: /path/to/dvlg-logs
+log_repo_remote: https://github.com/yourname/dvlg-logs.git
 ```
 
-Use `log_repo_path` to store logs (and auto-commit) in a separate Git repo. If omitted, dvlg writes to the current repo.
+Use `log_repo_path` to store logs (and auto-commit) in a separate Git repo. If omitted, dvlg writes to the current repo. Use `log_repo_remote` to configure the remote URL used by `dvlg push`.
 
 ### Configure via CLI
 
@@ -234,6 +243,7 @@ Set values:
 
 ```bash
 dvlg config set --log-repo-path /path/to/dvlg-logs
+dvlg config set --log-repo-remote https://github.com/yourname/dvlg-logs.git
 dvlg config set --auto-commit true
 ```
 

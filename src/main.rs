@@ -49,6 +49,7 @@ enum Commands {
         #[arg(long = "format", default_value = "markdown")]
         format: String,
     },
+    Push,
     Decisions,
 }
 
@@ -58,6 +59,8 @@ enum ConfigCommand {
     Set {
         #[arg(long = "log-repo-path")]
         log_repo_path: Option<String>,
+        #[arg(long = "log-repo-remote")]
+        log_repo_remote: Option<String>,
         #[arg(long = "auto-commit")]
         auto_commit: Option<bool>,
     },
@@ -72,6 +75,7 @@ struct Config {
     #[allow(dead_code)]
     editor: Option<String>,
     log_repo_path: Option<String>,
+    log_repo_remote: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -133,6 +137,61 @@ fn log_root(config: &Config) -> PathBuf {
 
 fn log_store_root(config: &Config) -> PathBuf {
     log_root(config).join(".dvlg")
+}
+
+fn ensure_log_repo_path(config: &Config) {
+    if config.log_repo_path.is_none() {
+        eprintln!("log_repo_path is not set. Use 'dvlg config set --log-repo-path <path>'.");
+        std::process::exit(1);
+    }
+
+    if let Some(path) = &config.log_repo_path {
+        if path.starts_with("http://") || path.starts_with("https://") || path.ends_with(".git") {
+            eprintln!("log_repo_path must be a local directory path, not a remote URL.");
+            eprintln!("Clone the repo locally and set log_repo_path to that folder.");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn ensure_log_repo_remote(config: &Config) -> Option<String> {
+    config.log_repo_remote.clone()
+}
+
+fn ensure_log_repo_ready(config: &Config) {
+    ensure_log_repo_path(config);
+    let root = log_root(config);
+    let remote = ensure_log_repo_remote(config);
+
+    if root.exists() {
+        let git_dir = root.join(".git");
+        if !git_dir.exists() {
+            if let Err(err) = run_command("git", &["-C", root.to_string_lossy().as_ref(), "init"]) {
+                eprintln!("Failed to initialize log repo: {err}");
+                std::process::exit(1);
+            }
+        }
+
+        if let Some(remote_url) = remote {
+            let root_arg = root.to_string_lossy();
+            if run_command("git", &["-C", root_arg.as_ref(), "remote", "get-url", "origin"]).is_err() {
+                let _ = run_command("git", &["-C", root_arg.as_ref(), "remote", "add", "origin", remote_url.as_str()]);
+            }
+            let _ = run_command("git", &["-C", root_arg.as_ref(), "remote", "set-url", "origin", remote_url.as_str()]);
+        }
+        return;
+    }
+
+    if let Some(remote_url) = remote {
+        if let Err(err) = run_command("git", &["clone", remote_url.as_str(), root.to_string_lossy().as_ref()]) {
+            eprintln!("Failed to clone log repo: {err}");
+            std::process::exit(1);
+        }
+    } else {
+        eprintln!("log_repo_path does not exist and log_repo_remote is not set.");
+        eprintln!("Set a remote with 'dvlg config set --log-repo-remote <url>'.");
+        std::process::exit(1);
+    }
 }
 
 fn ensure_initialized(config: &Config) {
@@ -279,11 +338,11 @@ fn main() {
 
     match cli.command {
         Commands::Init => {
-            let root = log_root(&config);
-            if !root.exists() {
-                eprintln!("Log repo path does not exist: {}", root.display());
-                std::process::exit(1);
+            if config.log_repo_path.is_some() {
+                ensure_log_repo_ready(&config);
             }
+
+            let root = log_root(&config);
 
             let year = chrono::Local::now().year();
             let path = log_store_root(&config).join(year.to_string());
@@ -366,11 +425,15 @@ fn main() {
                 }
                 ConfigCommand::Set {
                     log_repo_path,
+                    log_repo_remote,
                     auto_commit,
                 } => {
                     let mut updated = config;
                     if let Some(path) = log_repo_path {
                         updated.log_repo_path = Some(path);
+                    }
+                    if let Some(remote) = log_repo_remote {
+                        updated.log_repo_remote = Some(remote);
                     }
                     if let Some(value) = auto_commit {
                         updated.auto_commit = Some(value);
@@ -382,6 +445,50 @@ fn main() {
                     }
 
                     println!("Config updated.");
+                }
+            }
+        }
+        Commands::Push => {
+            if config.log_repo_path.is_some() {
+                ensure_log_repo_ready(&config);
+            }
+            let root = log_root(&config);
+            let root_arg = root.to_string_lossy();
+
+            match run_command("git", &["-C", root_arg.as_ref(), "push"]) {
+                Ok(_) => {
+                    println!("Pushed log repo.");
+                }
+                Err(err) => {
+                    if err.contains("src refspec") && err.contains("does not match any") {
+                        let _ = run_command("git", &["-C", root_arg.as_ref(), "switch", "-c", "main"]);
+                        if run_command("git", &["-C", root_arg.as_ref(), "rev-parse", "HEAD"]).is_err() {
+                            if let Err(commit_err) = run_command(
+                                "git",
+                                &["-C", root_arg.as_ref(), "commit", "--allow-empty", "-m", "dvlg init"],
+                            ) {
+                                eprintln!("Failed to create initial commit: {commit_err}");
+                                std::process::exit(1);
+                            }
+                        }
+
+                        if let Err(push_err) = run_command("git", &["-C", root_arg.as_ref(), "push", "-u", "origin", "main"]) {
+                            eprintln!("Failed to push log repo: {push_err}");
+                            std::process::exit(1);
+                        }
+                        println!("Pushed log repo and set upstream.");
+                    } else if err.contains("no upstream") || err.contains("set the remote as upstream") {
+                        let branch = run_command("git", &["-C", root_arg.as_ref(), "rev-parse", "--abbrev-ref", "HEAD"])
+                            .unwrap_or_else(|_| "main".to_string());
+                        if let Err(push_err) = run_command("git", &["-C", root_arg.as_ref(), "push", "-u", "origin", branch.as_str()]) {
+                            eprintln!("Failed to push log repo: {push_err}");
+                            std::process::exit(1);
+                        }
+                        println!("Pushed log repo and set upstream.");
+                    } else {
+                        eprintln!("Failed to push log repo: {err}");
+                        std::process::exit(1);
+                    }
                 }
             }
         }
