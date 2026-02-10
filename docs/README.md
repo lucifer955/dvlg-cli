@@ -2,7 +2,7 @@
 
 **A Git-backed CLI developer diary**
 
-`dvlg` is a lightweight CLI tool that helps developers **track daily work, decisions, and progress** directly inside a Git repository.
+`dvlg` is a lightweight, open-source CLI tool that helps developers **track daily work, decisions, and progress** directly inside a Git repository.
 
 No cloud. No database. No UI.
 Just structured files + Git history.
@@ -285,7 +285,7 @@ The tool is designed to be:
 
 ## License
 
-MIT (planned)
+MIT
 
 ---
 
