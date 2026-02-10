@@ -1,8 +1,9 @@
 use clap::{Parser, Subcommand};
-use chrono::Datelike;
-use serde::Deserialize;
+use chrono::{Datelike, SecondsFormat};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 
 #[derive(Parser, Debug)]
 #[command(name = "dvlg", version, about = "A Git-backed developer diary CLI")]
@@ -49,6 +50,22 @@ struct Config {
     editor: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct LogEntry {
+    timestamp: String,
+    message: String,
+    tags: Vec<String>,
+    decision: bool,
+    git: GitContext,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct GitContext {
+    repo: String,
+    branch: String,
+    commit: String,
+}
+
 fn config_path() -> Option<PathBuf> {
     dirs::config_dir().map(|base| base.join("dvlg").join("config.yaml"))
 }
@@ -69,8 +86,66 @@ fn load_config() -> Config {
     }
 }
 
+fn today_log_path() -> PathBuf {
+    let now = chrono::Local::now();
+    PathBuf::from(".dvlg")
+        .join(format!("{:04}", now.year()))
+        .join(format!("{:02}", now.month()))
+        .join(format!("{:02}.yaml", now.day()))
+}
+
+fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|err| format!("Failed to run {program}: {err}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let message = if stderr.is_empty() {
+            format!("{program} exited with status {}", output.status)
+        } else {
+            stderr
+        };
+        return Err(message);
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn collect_git_context() -> GitContext {
+    let repo = run_command("git", &["rev-parse", "--show-toplevel"]).unwrap_or_else(|_| "unknown".to_string());
+    let branch = run_command("git", &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "unknown".to_string());
+    let commit = run_command("git", &["rev-parse", "HEAD"]).unwrap_or_else(|_| "unknown".to_string());
+
+    GitContext { repo, branch, commit }
+}
+
+fn load_entries(path: &PathBuf) -> Result<Vec<LogEntry>, String> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let contents = fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read log file {}: {err}", path.display()))?;
+
+    if contents.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    serde_yaml::from_str(&contents)
+        .map_err(|err| format!("Failed to parse log file {}: {err}", path.display()))
+}
+
+fn save_entries(path: &PathBuf, entries: &[LogEntry]) -> Result<(), String> {
+    let yaml = serde_yaml::to_string(entries)
+        .map_err(|err| format!("Failed to serialize log entries: {err}"))?;
+    fs::write(path, yaml)
+        .map_err(|err| format!("Failed to write log file {}: {err}", path.display()))
+}
+
 fn main() {
-    let _config = load_config();
+    let config = load_config();
     let cli = Cli::parse();
 
     match cli.command {
@@ -89,8 +164,60 @@ fn main() {
 
             println!("Initialized dvlg at {}", path.display());
         }
-        Commands::Add { .. }
-        | Commands::Today
+        Commands::Add {
+            message,
+            tags,
+            decision,
+        } => {
+            let now = chrono::Local::now();
+            let path = today_log_path();
+            if let Some(parent) = path.parent() {
+                if let Err(err) = fs::create_dir_all(parent) {
+                    eprintln!("Failed to create log directory: {err}");
+                    std::process::exit(1);
+                }
+            }
+
+            let mut entries = match load_entries(&path) {
+                Ok(entries) => entries,
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            };
+
+            let entry = LogEntry {
+                timestamp: now.to_rfc3339_opts(SecondsFormat::Secs, true),
+                message: message.clone(),
+                tags,
+                decision,
+                git: collect_git_context(),
+            };
+
+            entries.push(entry);
+
+            if let Err(err) = save_entries(&path, &entries) {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+
+            println!("Added entry to {}", path.display());
+
+            if config.auto_commit.unwrap_or(false) {
+                let path_arg = path.to_string_lossy();
+                if let Err(err) = run_command("git", &["add", path_arg.as_ref()]) {
+                    eprintln!("Failed to stage log file: {err}");
+                    std::process::exit(1);
+                }
+
+                let commit_message = format!("dvlg add: {message}");
+                if let Err(err) = run_command("git", &["commit", "-m", commit_message.as_str()]) {
+                    eprintln!("Failed to commit log file: {err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Commands::Today
         | Commands::List { .. }
         | Commands::Search { .. }
         | Commands::Export { .. }
