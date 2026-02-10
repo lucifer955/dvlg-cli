@@ -60,7 +60,7 @@ dvlg init
 Creates:
 
 ```text
-.devlog/
+.dvlg/
 └── 2026/
 ```
 
@@ -126,7 +126,7 @@ dvlg search "service bus"
 
 By default:
 
-- Logs are written to `.devlog/YYYY/MM/DD.yaml`
+- Logs are written to `.dvlg/YYYY/MM/DD.yaml`
 - Each entry can auto-commit to Git
 - Logs are branch-aware
 
@@ -175,6 +175,37 @@ This gives you **decision history** without heavyweight ADR processes.
 
 ---
 
+## Storage schema
+
+Logs are stored as YAML arrays at:
+
+```text
+.dvlg/YYYY/MM/DD.yaml
+```
+
+Each entry has the following required fields:
+
+- `timestamp` (RFC 3339)
+- `message`
+- `tags` (array, can be empty)
+- `decision` (bool)
+- `git` object: `repo`, `branch`, `commit`
+
+Example entry:
+
+```yaml
+- timestamp: "2026-02-10T09:14:22Z"
+  message: "Investigated Service Bus retry behavior"
+  tags: ["service-bus", "retries"]
+  decision: false
+  git:
+    repo: "/home/xavier511/projects/order-platform"
+    branch: "main"
+    commit: "a1b2c3d"
+```
+
+---
+
 ## Configuration (Optional)
 
 Global config file:
@@ -190,7 +221,7 @@ Most users don’t need this.
 
 ---
 
-## What devlog Is Not
+## What dvlg Is Not
 
 - ❌ Not a task manager
 - ❌ Not a note-taking app
