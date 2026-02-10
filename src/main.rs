@@ -168,6 +168,51 @@ fn format_date_from_path(path: &std::path::Path) -> Option<String> {
     Some(format!("{:04}-{:02}-{:02}", year, month, day))
 }
 
+fn collect_entries_for_range(start: chrono::NaiveDate, end: chrono::NaiveDate) -> Vec<(chrono::NaiveDate, Vec<LogEntry>)> {
+    let mut result = Vec::new();
+    let mut current = start;
+    while current <= end {
+        let path = log_path_for_date(current);
+        if path.exists() {
+            if let Ok(entries) = load_entries(&path) {
+                if !entries.is_empty() {
+                    result.push((current, entries));
+                }
+            }
+        }
+        current = current + Duration::days(1);
+    }
+    result
+}
+
+fn render_export_markdown(entries: &[(chrono::NaiveDate, Vec<LogEntry>)]) {
+    for (date, items) in entries {
+        println!("## {:04}-{:02}-{:02}", date.year(), date.month(), date.day());
+        for item in items {
+            if item.decision {
+                println!("- **[decision]** {}", item.message);
+            } else {
+                println!("- {}", item.message);
+            }
+        }
+        println!();
+    }
+}
+
+fn render_export_text(entries: &[(chrono::NaiveDate, Vec<LogEntry>)]) {
+    for (date, items) in entries {
+        println!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day());
+        for item in items {
+            if item.decision {
+                println!("* [decision] {}", item.message);
+            } else {
+                println!("* {}", item.message);
+            }
+        }
+        println!();
+    }
+}
+
 fn main() {
     let config = load_config();
     let cli = Cli::parse();
@@ -324,7 +369,32 @@ fn main() {
                 }
             }
         }
-        | Commands::Export { .. }
+        Commands::Export { week, month, format } => {
+            let today = chrono::Local::now().date_naive();
+            let start = if week {
+                today - Duration::days(6)
+            } else if month {
+                chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+                    .unwrap_or(today)
+            } else {
+                today
+            };
+
+            let entries = collect_entries_for_range(start, today);
+            if entries.is_empty() {
+                println!("No entries found.");
+                return;
+            }
+
+            match format.as_str() {
+                "markdown" => render_export_markdown(&entries),
+                "text" => render_export_text(&entries),
+                _ => {
+                    eprintln!("Unsupported format: {format}");
+                    std::process::exit(1);
+                }
+            }
+        }
         | Commands::Decisions => {
             println!("Not implemented yet.");
         }
