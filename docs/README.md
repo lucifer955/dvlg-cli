@@ -222,6 +222,21 @@ log_repo_path: /path/to/dvlg-logs
 
 Use `log_repo_path` to store logs (and auto-commit) in a separate Git repo. If omitted, dvlg writes to the current repo.
 
+### Configure via CLI
+
+Show current config:
+
+```bash
+dvlg config show
+```
+
+Set values:
+
+```bash
+dvlg config set --log-repo-path /path/to/dvlg-logs
+dvlg config set --auto-commit true
+```
+
 ---
 
 ## What dvlg Is Not

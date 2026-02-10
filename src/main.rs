@@ -27,6 +27,10 @@ enum Commands {
         #[arg(long = "decision")]
         decision: bool,
     },
+    Config {
+        #[command(subcommand)]
+        action: ConfigCommand,
+    },
     Today,
     List {
         #[arg(long = "week", conflicts_with = "month")]
@@ -48,7 +52,18 @@ enum Commands {
     Decisions,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Subcommand, Debug)]
+enum ConfigCommand {
+    Show,
+    Set {
+        #[arg(long = "log-repo-path")]
+        log_repo_path: Option<String>,
+        #[arg(long = "auto-commit")]
+        auto_commit: Option<bool>,
+    },
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[allow(dead_code)]
 struct Config {
     auto_commit: Option<bool>,
@@ -93,6 +108,19 @@ fn load_config() -> Config {
         Ok(config) => config,
         Err(_) => Config::default(),
     }
+}
+
+fn save_config(config: &Config) -> Result<(), String> {
+    let path = config_path().ok_or_else(|| "Failed to resolve config path".to_string())?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("Failed to create config directory: {err}"))?;
+    }
+
+    let yaml = serde_yaml::to_string(config)
+        .map_err(|err| format!("Failed to serialize config: {err}"))?;
+    fs::write(&path, yaml)
+        .map_err(|err| format!("Failed to write config file {}: {err}", path.display()))
 }
 
 fn log_root(config: &Config) -> PathBuf {
@@ -324,6 +352,36 @@ fn main() {
                 if let Err(err) = run_command("git", &["-C", root_arg.as_ref(), "commit", "-m", commit_message.as_str()]) {
                     eprintln!("Failed to commit log file: {err}");
                     std::process::exit(1);
+                }
+            }
+        }
+        Commands::Config { action } => {
+            match action {
+                ConfigCommand::Show => {
+                    let path = config_path().unwrap_or_else(|| PathBuf::from("<unknown>"));
+                    println!("Config file: {}", path.display());
+                    let yaml = serde_yaml::to_string(&config)
+                        .unwrap_or_else(|_| "<invalid config>".to_string());
+                    print!("{yaml}");
+                }
+                ConfigCommand::Set {
+                    log_repo_path,
+                    auto_commit,
+                } => {
+                    let mut updated = config;
+                    if let Some(path) = log_repo_path {
+                        updated.log_repo_path = Some(path);
+                    }
+                    if let Some(value) = auto_commit {
+                        updated.auto_commit = Some(value);
+                    }
+
+                    if let Err(err) = save_config(&updated) {
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
+
+                    println!("Config updated.");
                 }
             }
         }
