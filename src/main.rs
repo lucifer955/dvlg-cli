@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use chrono::{Datelike, SecondsFormat};
+use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -92,6 +93,13 @@ fn today_log_path() -> PathBuf {
         .join(format!("{:04}", now.year()))
         .join(format!("{:02}", now.month()))
         .join(format!("{:02}.yaml", now.day()))
+}
+
+fn log_path_for_date(date: chrono::NaiveDate) -> PathBuf {
+    PathBuf::from(".dvlg")
+        .join(format!("{:04}", date.year()))
+        .join(format!("{:02}", date.month()))
+        .join(format!("{:02}.yaml", date.day()))
 }
 
 fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
@@ -242,7 +250,37 @@ fn main() {
                 }
             }
         }
-        Commands::List { .. }
+        Commands::List { week, month } => {
+            let today = chrono::Local::now().date_naive();
+            let start = if week {
+                today - Duration::days(6)
+            } else if month {
+                chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
+                    .unwrap_or(today)
+            } else {
+                today
+            };
+
+            let mut current = start;
+            while current <= today {
+                let path = log_path_for_date(current);
+                if path.exists() {
+                    let entries = match load_entries(&path) {
+                        Ok(entries) => entries,
+                        Err(err) => {
+                            eprintln!("{err}");
+                            std::process::exit(1);
+                        }
+                    };
+
+                    for entry in entries {
+                        println!("{:04}-{:02}-{:02} - {}", current.year(), current.month(), current.day(), entry.message);
+                    }
+                }
+
+                current = current + Duration::days(1);
+            }
+        }
         | Commands::Search { .. }
         | Commands::Export { .. }
         | Commands::Decisions => {
