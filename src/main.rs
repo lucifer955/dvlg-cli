@@ -396,7 +396,40 @@ fn main() {
             }
         }
         | Commands::Decisions => {
-            println!("Not implemented yet.");
+            let mut results: Vec<(String, String)> = Vec::new();
+
+            for entry in WalkDir::new(".dvlg")
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.file_type().is_file())
+                .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("yaml"))
+            {
+                let path = entry.path().to_path_buf();
+                let entries = match load_entries(&path) {
+                    Ok(entries) => entries,
+                    Err(err) => {
+                        eprintln!("{err}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let date = format_date_from_path(&path).unwrap_or_else(|| path.display().to_string());
+                for item in entries {
+                    if item.decision {
+                        results.push((date.clone(), item.message));
+                    }
+                }
+            }
+
+            results.sort_by(|a, b| a.0.cmp(&b.0));
+            if results.is_empty() {
+                println!("No decisions found.");
+                return;
+            }
+
+            for (date, message) in results {
+                println!("{} - {}", date, message);
+            }
         }
     }
 }
