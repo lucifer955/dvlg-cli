@@ -236,12 +236,3 @@ Contributions, ideas, and feedback are welcome.
 Open an issue or submit a PR.
 
 ---
-
-If you want, next I can:
-
-- Tighten this into a **public-facing OSS README**
-- Add **examples with screenshots**
-- Write a **CONTRIBUTING.md**
-- Draft a **CHANGELOG strategy**
-
-Just tell me what you want to refine next.
