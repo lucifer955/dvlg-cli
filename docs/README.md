@@ -64,6 +64,8 @@ Creates:
 └── 2026/
 ```
 
+If dvlg is not initialized, commands like `today`, `list`, `search`, `export`, and `decisions` will exit with an error and prompt you to run `dvlg init`.
+
 ---
 
 ### 2. Log your work

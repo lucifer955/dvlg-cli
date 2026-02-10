@@ -88,6 +88,13 @@ fn load_config() -> Config {
     }
 }
 
+fn ensure_initialized() {
+    if !PathBuf::from(".dvlg").exists() {
+        eprintln!("dvlg is not initialized. Run 'dvlg init'.");
+        std::process::exit(1);
+    }
+}
+
 fn today_log_path() -> PathBuf {
     let now = chrono::Local::now();
     PathBuf::from(".dvlg")
@@ -287,6 +294,7 @@ fn main() {
             }
         }
         Commands::Today => {
+            ensure_initialized();
             let path = today_log_path();
             if !path.exists() {
                 println!("No entries for today.");
@@ -312,6 +320,7 @@ fn main() {
             }
         }
         Commands::List { week, month } => {
+            ensure_initialized();
             let today = chrono::Local::now().date_naive();
             let start = if week {
                 today - Duration::days(6)
@@ -343,6 +352,7 @@ fn main() {
             }
         }
         Commands::Search { term } => {
+            ensure_initialized();
             let needle = term.to_lowercase();
             for entry in WalkDir::new(".dvlg")
                 .into_iter()
@@ -370,6 +380,7 @@ fn main() {
             }
         }
         Commands::Export { week, month, format } => {
+            ensure_initialized();
             let today = chrono::Local::now().date_naive();
             let start = if week {
                 today - Duration::days(6)
@@ -396,6 +407,7 @@ fn main() {
             }
         }
         | Commands::Decisions => {
+            ensure_initialized();
             let mut results: Vec<(String, String)> = Vec::new();
 
             for entry in WalkDir::new(".dvlg")
