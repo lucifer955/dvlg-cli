@@ -433,3 +433,46 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    fn fixture_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample.yaml")
+    }
+
+    #[test]
+    fn loads_fixture_entries() {
+        let path = fixture_path();
+        let entries = load_entries(&path).expect("failed to load fixture");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].message, "Investigated Service Bus retry behavior");
+        assert!(!entries[0].decision);
+        assert!(entries[1].decision);
+    }
+
+    #[test]
+    fn saves_and_loads_entries() {
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("log.yaml");
+        let entries = vec![LogEntry {
+            timestamp: "2026-02-10T12:00:00Z".to_string(),
+            message: "Test entry".to_string(),
+            tags: vec!["test".to_string()],
+            decision: false,
+            git: GitContext {
+                repo: "/repo".to_string(),
+                branch: "main".to_string(),
+                commit: "abc123".to_string(),
+            },
+        }];
+
+        save_entries(&path, &entries).expect("save entries");
+        let loaded = load_entries(&path).expect("load entries");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].message, "Test entry");
+    }
+}
