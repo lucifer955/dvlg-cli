@@ -1,0 +1,9 @@
+- timestamp: 2026-02-10T20:30:48+05:30
+  message: First entry
+  tags:
+    - setup
+  decision: false
+  git:
+    repo: /home/nhk/Desktop/DevBlog
+    branch: develop
+    commit: 7f7005551c41bdbe8c6110ccabf7fab69e790cc9
