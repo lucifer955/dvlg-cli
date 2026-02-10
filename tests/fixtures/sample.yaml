@@ -3,7 +3,7 @@
   tags: ["service-bus", "retries"]
   decision: false
   git:
-    repo: "/home/xavier511/projects/order-platform"
+    repo: "/home/nhk/projects/order-platform"
     branch: "main"
     commit: "a1b2c3d"
 - timestamp: "2026-02-10T10:05:01Z"
@@ -11,6 +11,6 @@
   tags: ["decision", "architecture"]
   decision: true
   git:
-    repo: "/home/xavier511/projects/order-platform"
+    repo: "/home/nhk/projects/order-platform"
     branch: "main"
     commit: "a1b2c3d"
