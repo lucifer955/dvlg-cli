@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use clap::{Parser, Subcommand};
 use chrono::{Datelike, SecondsFormat};
 use chrono::Duration;
@@ -5,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::env;
 use walkdir::WalkDir;
 
 #[derive(Parser, Debug)]
@@ -46,10 +49,14 @@ enum Commands {
 }
 
 #[derive(Debug, Default, Deserialize)]
+#[allow(dead_code)]
 struct Config {
     auto_commit: Option<bool>,
+    #[allow(dead_code)]
     default_project: Option<String>,
+    #[allow(dead_code)]
     editor: Option<String>,
+    log_repo_path: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -88,23 +95,35 @@ fn load_config() -> Config {
     }
 }
 
-fn ensure_initialized() {
-    if !PathBuf::from(".dvlg").exists() {
+fn log_root(config: &Config) -> PathBuf {
+    if let Some(path) = &config.log_repo_path {
+        PathBuf::from(path)
+    } else {
+        env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    }
+}
+
+fn log_store_root(config: &Config) -> PathBuf {
+    log_root(config).join(".dvlg")
+}
+
+fn ensure_initialized(config: &Config) {
+    if !log_store_root(config).exists() {
         eprintln!("dvlg is not initialized. Run 'dvlg init'.");
         std::process::exit(1);
     }
 }
 
-fn today_log_path() -> PathBuf {
+fn today_log_path(config: &Config) -> PathBuf {
     let now = chrono::Local::now();
-    PathBuf::from(".dvlg")
+    log_store_root(config)
         .join(format!("{:04}", now.year()))
         .join(format!("{:02}", now.month()))
         .join(format!("{:02}.yaml", now.day()))
 }
 
-fn log_path_for_date(date: chrono::NaiveDate) -> PathBuf {
-    PathBuf::from(".dvlg")
+fn log_path_for_date(config: &Config, date: chrono::NaiveDate) -> PathBuf {
+    log_store_root(config)
         .join(format!("{:04}", date.year()))
         .join(format!("{:02}", date.month()))
         .join(format!("{:02}.yaml", date.day()))
@@ -175,11 +194,15 @@ fn format_date_from_path(path: &std::path::Path) -> Option<String> {
     Some(format!("{:04}-{:02}-{:02}", year, month, day))
 }
 
-fn collect_entries_for_range(start: chrono::NaiveDate, end: chrono::NaiveDate) -> Vec<(chrono::NaiveDate, Vec<LogEntry>)> {
+fn collect_entries_for_range(
+    config: &Config,
+    start: chrono::NaiveDate,
+    end: chrono::NaiveDate,
+) -> Vec<(chrono::NaiveDate, Vec<LogEntry>)> {
     let mut result = Vec::new();
     let mut current = start;
     while current <= end {
-        let path = log_path_for_date(current);
+        let path = log_path_for_date(config, current);
         if path.exists() {
             if let Ok(entries) = load_entries(&path) {
                 if !entries.is_empty() {
@@ -222,12 +245,20 @@ fn render_export_text(entries: &[(chrono::NaiveDate, Vec<LogEntry>)]) {
 
 fn main() {
     let config = load_config();
+    let _ = &config.default_project;
+    let _ = &config.editor;
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Init => {
+            let root = log_root(&config);
+            if !root.exists() {
+                eprintln!("Log repo path does not exist: {}", root.display());
+                std::process::exit(1);
+            }
+
             let year = chrono::Local::now().year();
-            let path = PathBuf::from(".dvlg").join(year.to_string());
+            let path = log_store_root(&config).join(year.to_string());
             if path.exists() {
                 println!("dvlg already initialized at {}", path.display());
                 return;
@@ -246,7 +277,7 @@ fn main() {
             decision,
         } => {
             let now = chrono::Local::now();
-            let path = today_log_path();
+            let path = today_log_path(&config);
             if let Some(parent) = path.parent() {
                 if let Err(err) = fs::create_dir_all(parent) {
                     eprintln!("Failed to create log directory: {err}");
@@ -280,22 +311,25 @@ fn main() {
             println!("Added entry to {}", path.display());
 
             if config.auto_commit.unwrap_or(false) {
-                let path_arg = path.to_string_lossy();
-                if let Err(err) = run_command("git", &["add", path_arg.as_ref()]) {
+                let root = log_root(&config);
+                let root_arg = root.to_string_lossy();
+                let add_path = path.strip_prefix(&root).unwrap_or(&path);
+                let add_arg = add_path.to_string_lossy();
+                if let Err(err) = run_command("git", &["-C", root_arg.as_ref(), "add", add_arg.as_ref()]) {
                     eprintln!("Failed to stage log file: {err}");
                     std::process::exit(1);
                 }
 
                 let commit_message = format!("dvlg add: {message}");
-                if let Err(err) = run_command("git", &["commit", "-m", commit_message.as_str()]) {
+                if let Err(err) = run_command("git", &["-C", root_arg.as_ref(), "commit", "-m", commit_message.as_str()]) {
                     eprintln!("Failed to commit log file: {err}");
                     std::process::exit(1);
                 }
             }
         }
         Commands::Today => {
-            ensure_initialized();
-            let path = today_log_path();
+            ensure_initialized(&config);
+            let path = today_log_path(&config);
             if !path.exists() {
                 println!("No entries for today.");
                 return;
@@ -320,7 +354,7 @@ fn main() {
             }
         }
         Commands::List { week, month } => {
-            ensure_initialized();
+            ensure_initialized(&config);
             let today = chrono::Local::now().date_naive();
             let start = if week {
                 today - Duration::days(6)
@@ -333,7 +367,7 @@ fn main() {
 
             let mut current = start;
             while current <= today {
-                let path = log_path_for_date(current);
+                let path = log_path_for_date(&config, current);
                 if path.exists() {
                     let entries = match load_entries(&path) {
                         Ok(entries) => entries,
@@ -352,9 +386,9 @@ fn main() {
             }
         }
         Commands::Search { term } => {
-            ensure_initialized();
+            ensure_initialized(&config);
             let needle = term.to_lowercase();
-            for entry in WalkDir::new(".dvlg")
+            for entry in WalkDir::new(log_store_root(&config))
                 .into_iter()
                 .filter_map(|entry| entry.ok())
                 .filter(|entry| entry.file_type().is_file())
@@ -380,7 +414,7 @@ fn main() {
             }
         }
         Commands::Export { week, month, format } => {
-            ensure_initialized();
+            ensure_initialized(&config);
             let today = chrono::Local::now().date_naive();
             let start = if week {
                 today - Duration::days(6)
@@ -391,7 +425,7 @@ fn main() {
                 today
             };
 
-            let entries = collect_entries_for_range(start, today);
+            let entries = collect_entries_for_range(&config, start, today);
             if entries.is_empty() {
                 println!("No entries found.");
                 return;
@@ -407,10 +441,10 @@ fn main() {
             }
         }
         | Commands::Decisions => {
-            ensure_initialized();
+            ensure_initialized(&config);
             let mut results: Vec<(String, String)> = Vec::new();
 
-            for entry in WalkDir::new(".dvlg")
+            for entry in WalkDir::new(log_store_root(&config))
                 .into_iter()
                 .filter_map(|entry| entry.ok())
                 .filter(|entry| entry.file_type().is_file())

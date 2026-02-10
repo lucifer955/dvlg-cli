@@ -217,9 +217,10 @@ Global config file:
 auto_commit: true
 default_project: order-platform
 editor: vim
+log_repo_path: /path/to/dvlg-logs
 ```
 
-Most users don’t need this.
+Use `log_repo_path` to store logs (and auto-commit) in a separate Git repo. If omitted, dvlg writes to the current repo.
 
 ---
 
