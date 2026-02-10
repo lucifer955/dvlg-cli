@@ -209,7 +209,7 @@ Example entry:
   tags: ["service-bus", "retries"]
   decision: false
   git:
-    repo: "/home/xavier511/projects/order-platform"
+    repo: "/home/nhk/projects/order-platform"
     branch: "main"
     commit: "a1b2c3d"
 ```
