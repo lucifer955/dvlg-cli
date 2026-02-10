@@ -1,0 +1,16 @@
+- timestamp: "2026-02-10T09:14:22Z"
+  message: "Investigated Service Bus retry behavior"
+  tags: ["service-bus", "retries"]
+  decision: false
+  git:
+    repo: "/home/nhk/projects/order-platform"
+    branch: "main"
+    commit: "a1b2c3d"
+- timestamp: "2026-02-10T10:05:01Z"
+  message: "Chose Service Bus over Event Grid due to ordering guarantees"
+  tags: ["decision", "architecture"]
+  decision: true
+  git:
+    repo: "/home/nhk/projects/order-platform"
+    branch: "main"
+    commit: "a1b2c3d"
